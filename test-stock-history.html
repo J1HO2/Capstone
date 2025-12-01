@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock History Table Verification</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-gray-50 p-8">
+    <div class="max-w-2xl mx-auto">
+        <div class="bg-white rounded-lg shadow-lg p-8">
+            <h1 class="text-3xl font-bold text-gray-900 mb-2">Stock History Table Verification</h1>
+            <p class="text-gray-600 mb-6">This page verifies that the stock_history table has been created successfully</p>
+            
+            <div id="status" class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                <p class="text-blue-700">⏳ Checking database...</p>
+            </div>
+            
+            <div id="results" class="space-y-4"></div>
+            
+            <button id="testBtn" onclick="testStockTransaction()" class="mt-6 bg-green-500 hover:bg-green-600 text-white px-6 py-3 rounded-lg font-medium transition-colors">
+                Test Recording Transaction
+            </button>
+            
+            <button onclick="location.href='index.html'" class="mt-2 ml-2 bg-gray-500 hover:bg-gray-600 text-white px-6 py-3 rounded-lg font-medium transition-colors">
+                Back to App
+            </button>
+        </div>
+    </div>
+
+    <script type="module">
+        import { SUPABASE_CONFIG } from './config/credentials.js';
+        
+        const supabase = window.supabase.createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey);
+        
+        async function checkDatabase() {
+            const results = document.getElementById('results');
+            const statusDiv = document.getElementById('status');
+            
+            try {
+                // Test 1: Check table exists by querying it
+                console.log('Test 1: Checking if stock_history table exists...');
+                const { data: tableData, error: tableError } = await supabase
+                    .from('stock_history')
+                    .select('count', { count: 'exact', head: true });
+                
+                let result1 = '<div class="bg-green-50 border border-green-200 rounded-lg p-4">';
+                result1 += '<h3 class="font-semibold text-green-900">✅ Table Exists</h3>';
+                result1 += '<p class="text-sm text-green-700">stock_history table is accessible</p>';
+                if (!tableError) {
+                    result1 += '<p class="text-sm text-green-600 mt-2">Table is ready for transactions</p>';
+                } else {
+                    result1 += '<p class="text-sm text-red-600 mt-2">Error: ' + tableError.message + '</p>';
+                }
+                result1 += '</div>';
+                results.innerHTML += result1;
+                
+                // Test 2: Check user authentication
+                console.log('Test 2: Checking authentication...');
+                const { data: { user }, error: authError } = await supabase.auth.getUser();
+                
+                let result2 = '<div class="bg-green-50 border border-green-200 rounded-lg p-4">';
+                if (user) {
+                    result2 += '<h3 class="font-semibold text-green-900">✅ User Authenticated</h3>';
+                    result2 += '<p class="text-sm text-green-700">Logged in as: ' + user.email + '</p>';
+                } else {
+                    result2 += '<h3 class="font-semibold text-red-900">❌ Not Authenticated</h3>';
+                    result2 += '<p class="text-sm text-red-700">Please log in first</p>';
+                }
+                result2 += '</div>';
+                results.innerHTML += result2;
+                
+                // Test 3: Check inventory table
+                console.log('Test 3: Checking inventory table...');
+                const { data: invData, error: invError } = await supabase
+                    .from('inventory')
+                    .select('id, name, stock')
+                    .limit(3);
+                
+                let result3 = '<div class="bg-blue-50 border border-blue-200 rounded-lg p-4">';
+                if (!invError && invData && invData.length > 0) {
+                    result3 += '<h3 class="font-semibold text-blue-900">✅ Inventory Data Found</h3>';
+                    result3 += '<p class="text-sm text-blue-700">' + invData.length + ' products available</p>';
+                    result3 += '<div class="mt-2 text-sm"><strong>Sample:</strong><ul>';
+                    invData.forEach(item => {
+                        result3 += '<li class="text-blue-600">• ' + item.name + ' (ID: ' + item.id + ', Stock: ' + item.stock + ')</li>';
+                    });
+                    result3 += '</ul></div>';
+                } else {
+                    result3 += '<h3 class="font-semibold text-yellow-900">⚠️ No Inventory Data</h3>';
+                    result3 += '<p class="text-sm text-yellow-700">Add a product first before testing transactions</p>';
+                }
+                result3 += '</div>';
+                results.innerHTML += result3;
+                
+                statusDiv.innerHTML = '<p class="text-green-700">✅ Database verification complete!</p>';
+                
+            } catch (err) {
+                console.error('Error:', err);
+                statusDiv.innerHTML = '<p class="text-red-700">❌ Error: ' + err.message + '</p>';
+            }
+        }
+        
+        window.testStockTransaction = async function() {
+            const { data: { user } } = await supabase.auth.getUser();
+            
+            if (!user) {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Not Authenticated',
+                    text: 'Please log in first'
+                });
+                return;
+            }
+            
+            // Get first product
+            const { data: inventory, error: invError } = await supabase
+                .from('inventory')
+                .select('id, name, stock')
+                .limit(1);
+            
+            if (invError || !inventory || inventory.length === 0) {
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'No Products',
+                    text: 'Add a product to inventory first'
+                });
+                return;
+            }
+            
+            const product = inventory[0];
+            
+            // Record a test transaction
+            const { data, error } = await supabase
+                .from('stock_history')
+                .insert([{
+                    inventory_id: product.id,
+                    transaction_type: 'stock_in',
+                    quantity: 5,
+                    reason: 'Test transaction',
+                    user_email: user.email,
+                    user_name: user.user_metadata?.full_name || user.email,
+                    previous_stock: product.stock,
+                    new_stock: product.stock + 5
+                }])
+                .select();
+            
+            if (error) {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Transaction Failed',
+                    text: error.message
+                });
+            } else {
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Test Transaction Recorded!',
+                    html: '<p>Product: ' + product.name + '</p><p>+5 units</p><p style="font-size: 0.85rem; color: #666;">Check the Stock Activity Tracker in Inventory page to see it</p>'
+                });
+            }
+        };
+        
+        // Run check when page loads
+        checkDatabase();
+    </script>
+</body>
+</html>

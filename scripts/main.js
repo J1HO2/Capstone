@@ -1,7 +1,7 @@
 // Main Application Script
 import { loadComponent, loadPage } from './loader.js';
 import { initializeNavigation } from './navigation.js';
-import { loadInventory, renderInventory, deleteInventoryItem, filterInventory, recordStockTransaction } from './inventory.js';
+import { loadInventory, renderInventory, deleteInventoryItem, filterInventory, recordStockTransaction, loadStockTransactions, renderStockActivity, clearStockTransactions, populateMonthFilter, exportStockHistoryCSV } from './inventory.js';
 import { loadRooms, renderRooms, deleteRoom, updateRoomDropdown } from './rooms.js';
 import { loadBookings, renderBookings, cancelLease, deleteLease } from './bookings.js';
 import { loadStockHistory, renderStockHistory, filterStockHistory } from './stock-history.js';
@@ -16,6 +16,11 @@ window.deleteInventoryItem = deleteInventoryItem;
 window.deleteRoom = deleteRoom;
 window.cancelLease = cancelLease;
 window.deleteLease = deleteLease;
+window.loadStockTransactions = loadStockTransactions;
+window.renderStockActivity = renderStockActivity;
+window.clearStockTransactions = clearStockTransactions;
+window.populateMonthFilter = populateMonthFilter;
+window.exportStockHistoryCSV = exportStockHistoryCSV;
 
 // Stock modal function
 window.openStockModal = async function(productId, action) {
@@ -53,6 +58,8 @@ window.openStockModal = async function(productId, action) {
 // Page initialization functions
 window.initInventoryPage = async function() {
     await loadInventory();
+    await loadStockTransactions();
+    populateMonthFilter();
     
     // Attach event listeners for inventory page
     const searchInput = document.getElementById('searchInput');
@@ -99,6 +106,18 @@ window.initInventoryPage = async function() {
             });
         });
     }
+    
+    // Stock Activity Tracker buttons
+    const exportActivityBtn = document.getElementById('exportActivityBtn');
+    const clearActivityBtn = document.getElementById('clearActivityBtn');
+    
+    if (exportActivityBtn) {
+        exportActivityBtn.addEventListener('click', exportStockHistoryCSV);
+    }
+    
+    if (clearActivityBtn) {
+        clearActivityBtn.addEventListener('click', clearStockTransactions);
+    }
 };
 
 window.initStockHistoryPage = async function() {
@@ -142,66 +161,115 @@ window.openDetailedTransactionModal = function(event, index) {
 };
 
 window.initRoomsPage = async function() {
+    // Small delay to ensure DOM is ready
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
     await loadRooms();
     await loadBookings();
     
+    // Add another small delay to ensure buttons are in DOM
+    await new Promise(resolve => setTimeout(resolve, 50));
+    
     // Attach event listeners for rooms page
     const addRoomBtn = document.getElementById('addRoomBtn');
-    if (addRoomBtn) {
+    if (addRoomBtn && !addRoomBtn.dataset.bound) {
+        addRoomBtn.dataset.bound = 'true';
         addRoomBtn.addEventListener('click', () => {
+            console.log('✅ Add Room button clicked');
             const modal = document.getElementById('addRoomModal');
             if (modal) {
                 modal.classList.remove('hidden');
                 modal.classList.add('flex');
+                console.log('✅ Add Room Modal opened');
+            } else {
+                console.error('❌ Add Room Modal not found');
             }
         });
+        console.log('✅ Add Room button listener attached');
+    } else if (!addRoomBtn) {
+        console.warn('⚠️ Add Room button not found in DOM!');
     }
     
     const newBookingBtn = document.getElementById('newBookingBtn');
-    if (newBookingBtn) {
+    if (newBookingBtn && !newBookingBtn.dataset.bound) {
+        newBookingBtn.dataset.bound = 'true';
         newBookingBtn.addEventListener('click', () => {
+            console.log('✅ New Booking button clicked');
             updateRoomDropdown(); // Update available rooms in dropdown
             const modal = document.getElementById('newBookingModal');
             if (modal) {
                 modal.classList.remove('hidden');
                 modal.classList.add('flex');
+                console.log('✅ New Booking Modal opened');
+            } else {
+                console.error('❌ New Booking Modal not found');
             }
         });
+        console.log('✅ New Booking button listener attached');
+    } else if (!newBookingBtn) {
+        console.warn('⚠️ New Booking button not found in DOM!');
     }
     
     // Add Payment button
     const addPaymentBtn = document.getElementById('addPaymentBtn');
-    if (addPaymentBtn) {
+    if (addPaymentBtn && !addPaymentBtn.dataset.bound) {
+        addPaymentBtn.dataset.bound = 'true';
         addPaymentBtn.addEventListener('click', async () => {
-            console.log('Add Payment button clicked');
+            console.log('✅ Add Payment button clicked');
             // Close all other modals first
             closeModal('addCreditModal');
             
             await populateLeaseDropdown('paymentLease');
             generateReceiptNumber();
             openModal('addPaymentModal');
+            console.log('✅ Add Payment Modal opened');
         });
+        console.log('✅ Add Payment button listener attached');
+    } else if (!addPaymentBtn) {
+        console.warn('⚠️ Add Payment button not found in DOM!');
     }
     
     // Add Credit button
     const addCreditBtn = document.getElementById('addCreditBtn');
-    if (addCreditBtn) {
+    if (addCreditBtn && !addCreditBtn.dataset.bound) {
+        // Prevent duplicate listeners
+        addCreditBtn.dataset.bound = 'true';
         addCreditBtn.addEventListener('click', async () => {
             try {
-                console.log('Add Credit button clicked');
+                console.log('✅ Add Credit button clicked');
                 // Close all other modals first
                 closeModal('addPaymentModal');
                 
-                console.log('Populating lease dropdown...');
-                await populateLeaseDropdown('creditLease');
-                console.log('Opening credit modal...');
+                console.log('🔓 Opening credit modal...');
                 openModal('addCreditModal');
+                console.log('✅ Add Credit Modal opened');
+                
+                // Try to populate dropdown, but don't block modal from opening
+                try {
+                    console.log('🔄 Populating lease dropdown...');
+                    await populateLeaseDropdown('creditLease');
+                    console.log('✅ Lease dropdown populated');
+                } catch (dropdownError) {
+                    console.warn('⚠️ Warning populating dropdown:', dropdownError.message);
+                    // Modal is already open, just warn about dropdown issue
+                    const creditLease = document.getElementById('creditLease');
+                    if (creditLease) {
+                        creditLease.innerHTML = '<option value="">Loading leases...</option>';
+                    }
+                }
             } catch (error) {
-                console.error('Error opening credit modal:', error);
+                console.error('❌ Error with Add Credit button:', error);
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error',
+                    text: 'Failed to open credit modal: ' + error.message,
+                    confirmButtonColor: '#3b82f6'
+                });
             }
         });
-    } else {
-        console.error('Add Credit button not found!');
+        console.log('✅ Add Credit button listener attached');
+    } else if (!addCreditBtn) {
+        console.warn('⚠️ Add Credit button not found in DOM!');
     }
 };
 
@@ -1313,6 +1381,7 @@ function closeModal(modalId) {
     if (modal) {
         modal.classList.add('hidden');
         modal.classList.remove('flex');
+        modal.style.display = 'none';
         
         // Reset form if it exists
         const form = modal.querySelector('form');
@@ -1353,6 +1422,8 @@ function openModal(modalId) {
         console.log('Modal found, displaying...');
         modal.classList.remove('hidden');
         modal.classList.add('flex');
+        modal.style.display = 'flex';  // Force display: flex
+        console.log('✅ Modal should now be visible');
     } else {
         console.error('Modal not found:', modalId);
     }
@@ -1610,6 +1681,7 @@ async function initializeFormHandlers() {
             );
             
             await loadInventory();
+            await loadStockTransactions();
             
             // Reload dashboard stock history if on dashboard
             if (typeof loadStockHistory !== 'undefined') {
@@ -1944,101 +2016,122 @@ async function initializeFormHandlers() {
         addCreditForm.addEventListener('submit', async function(e) {
             e.preventDefault();
             
-            const leaseId = parseInt(document.getElementById('creditLease').value);
-            const amount = parseFloat(document.getElementById('creditAmount').value);
-            const reason = document.getElementById('creditReason').value;
-            const notes = document.getElementById('creditNote').value;
-            const reference = document.getElementById('creditReference').value;
-            
-            if (!leaseId || !amount || amount <= 0 || !reason || !notes) {
+            try {
+                const leaseId = parseInt(document.getElementById('creditLease').value);
+                const amount = parseFloat(document.getElementById('creditAmount').value);
+                const reason = document.getElementById('creditReason').value;
+                const notes = document.getElementById('creditNote').value;
+                const reference = document.getElementById('creditReference').value;
+                
+                console.log('💳 Credit form submitted with:', { leaseId, amount, reason });
+                
+                if (!leaseId || !amount || amount <= 0 || !reason || !notes) {
+                    console.error('❌ Missing required fields');
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Invalid Input',
+                        text: 'Please fill in all required fields (Lease, Amount, Reason, and Description)',
+                        confirmButtonColor: '#3b82f6'
+                    });
+                    return;
+                }
+                
+                // Get the booking details
+                console.log('📋 Fetching booking details for lease:', leaseId);
+                const { data: booking, error: fetchError } = await supabase
+                    .from('bookings')
+                    .select('*')
+                    .eq('id', leaseId)
+                    .single();
+                
+                if (fetchError || !booking) {
+                    console.error('❌ Failed to fetch booking:', fetchError);
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Error',
+                        text: 'Could not find the selected lease. Please try again.',
+                        confirmButtonColor: '#3b82f6'
+                    });
+                    return;
+                }
+                
+                console.log('✅ Booking found:', booking);
+                
+                // Create credit record
+                const creditRecord = {
+                    booking_id: leaseId,
+                    amount: amount,
+                    reason: reason,
+                    notes: notes,
+                    reference_number: reference || null,
+                    credit_date: new Date().toISOString().split('T')[0],
+                    created_at: new Date().toISOString()
+                };
+                
+                // Insert credit record
+                console.log('💾 Recording credit:', creditRecord);
+                const { error: creditError } = await supabase
+                    .from('credits')
+                    .insert([creditRecord]);
+                
+                if (creditError) {
+                    console.error('❌ Failed to record credit:', creditError);
+                    // Continue anyway, we'll still update the booking
+                }
+                
+                // Update booking's balance (reduce it by credit amount)
+                const newBalance = (booking.balance || 0) - amount;
+                
+                console.log('📊 Updating booking balance from', booking.balance, 'to', newBalance);
+                const { error: updateError } = await supabase
+                    .from('bookings')
+                    .update({ 
+                        balance: newBalance < 0 ? 0 : newBalance,
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq('id', leaseId);
+                
+                if (updateError) {
+                    console.error('❌ Failed to update booking:', updateError);
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Update Failed',
+                        text: 'Error updating booking: ' + updateError.message,
+                        confirmButtonColor: '#3b82f6'
+                    });
+                    return;
+                }
+                
+                console.log('✅ Credit added successfully');
+                await loadBookings();
+                closeModal('addCreditModal');
+                
+                // Reset form
+                addCreditForm.reset();
+                
                 Swal.fire({
-                    icon: 'error',
-                    title: 'Invalid Input',
-                    text: 'Please fill in all required fields',
-                    confirmButtonColor: '#eab308'
+                    icon: 'success',
+                    title: 'Credit Added Successfully!',
+                    html: `
+                        <div class="text-left">
+                            <p class="mb-2"><strong>Amount:</strong> ₱${amount.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</p>
+                            <p class="mb-2"><strong>Reason:</strong> ${reason}</p>
+                            ${reference ? `<p class="mb-2"><strong>Reference:</strong> ${reference}</p>` : ''}
+                            <p class="mt-4 text-sm text-gray-600">${notes}</p>
+                        </div>
+                    `,
+                    confirmButtonColor: '#3b82f6',
+                    confirmButtonText: 'Done'
                 });
-                return;
-            }
-            
-            // Get the booking details
-            const { data: booking, error: fetchError } = await supabase
-                .from('bookings')
-                .select('*')
-                .eq('id', leaseId)
-                .single();
-            
-            if (fetchError || !booking) {
-                console.error('Failed to fetch booking:', fetchError);
+            } catch (error) {
+                console.error('❌ Unexpected error adding credit:', error);
                 Swal.fire({
                     icon: 'error',
                     title: 'Error',
-                    text: 'Could not find the selected lease',
-                    confirmButtonColor: '#eab308'
+                    text: 'An unexpected error occurred: ' + error.message,
+                    confirmButtonColor: '#3b82f6'
                 });
-                return;
             }
-            
-            // Create credit record
-            const creditRecord = {
-                booking_id: leaseId,
-                amount: amount,
-                reason: reason,
-                notes: notes,
-                reference_number: reference || null,
-                credit_date: new Date().toISOString().split('T')[0],
-                created_at: new Date().toISOString()
-            };
-            
-            // Insert credit record (you may need to create a credits table)
-            const { error: creditError } = await supabase
-                .from('credits')
-                .insert([creditRecord]);
-            
-            if (creditError) {
-                console.error('Failed to record credit:', creditError);
-                // If credits table doesn't exist, just update the booking
-                console.log('Updating booking balance instead...');
-            }
-            
-            // Update booking's balance (reduce it by credit amount)
-            const newBalance = (booking.balance || 0) - amount;
-            
-            const { error: updateError } = await supabase
-                .from('bookings')
-                .update({ 
-                    balance: newBalance < 0 ? 0 : newBalance,
-                    updated_at: new Date().toISOString()
-                })
-                .eq('id', leaseId);
-            
-            if (updateError) {
-                console.error('Failed to update booking:', updateError);
-                Swal.fire({
-                    icon: 'error',
-                    title: 'Update Failed',
-                    text: updateError.message,
-                    confirmButtonColor: '#eab308'
-                });
-                return;
-            }
-            
-            await loadBookings();
-            closeModal('addCreditModal');
-            
-            Swal.fire({
-                icon: 'success',
-                title: 'Credit Added!',
-                html: `
-                    <div class="text-left">
-                        <p class="mb-2"><strong>Amount:</strong> ₱${amount.toLocaleString()}</p>
-                        <p class="mb-2"><strong>Reason:</strong> ${reason}</p>
-                        ${reference ? `<p class="mb-2"><strong>Reference:</strong> ${reference}</p>` : ''}
-                        <p class="mt-4 text-sm text-gray-600">${notes}</p>
-                    </div>
-                `,
-                confirmButtonColor: '#3b82f6',
-                confirmButtonText: 'Done'
-            });
         });
     }
 }
@@ -2064,29 +2157,50 @@ function generateReceiptNumber() {
 
 // Helper function to populate lease dropdown
 async function populateLeaseDropdown(selectId) {
-    const select = document.getElementById(selectId);
-    if (!select) return;
-    
-    const { supabase } = await import('./config.js');
-    const { bookings } = await import('./bookings.js');
-    
-    select.innerHTML = '<option value="">Select a lease</option>';
-    
-    // Filter only active bookings
-    const activeBookings = bookings.filter(b => b.status === 'Active');
-    
-    if (activeBookings.length === 0) {
-        select.innerHTML = '<option value="">No active leases available</option>';
-        return;
+    try {
+        const select = document.getElementById(selectId);
+        if (!select) {
+            console.error('❌ Select element not found:', selectId);
+            return;
+        }
+        
+        console.log('📂 Fetching bookings for dropdown:', selectId);
+        const { supabase } = await import('./config.js');
+        const { bookings } = await import('./bookings.js');
+        
+        console.log('📊 Available bookings:', bookings);
+        
+        select.innerHTML = '<option value="">Select a lease</option>';
+        
+        // Filter only active bookings
+        const activeBookings = bookings.filter(b => b.status === 'Active');
+        
+        console.log('🔍 Active bookings found:', activeBookings.length);
+        
+        if (activeBookings.length === 0) {
+            console.warn('⚠️ No active leases available');
+            select.innerHTML = '<option value="">No active leases available</option>';
+            return;
+        }
+        
+        activeBookings.forEach(booking => {
+            const option = document.createElement('option');
+            option.value = booking.id;
+            option.textContent = `Lease #${booking.id} - ${booking.client_name || booking.tenant || 'Unknown Tenant'} (Balance: ₱${(booking.balance || 0).toLocaleString()})`;
+            option.dataset.bookingData = JSON.stringify(booking);
+            select.appendChild(option);
+        });
+        
+        console.log('✅ Dropdown populated with', activeBookings.length, 'leases');
+    } catch (error) {
+        console.error('❌ Error populating lease dropdown:', error);
+        Swal.fire({
+            icon: 'error',
+            title: 'Error Loading Leases',
+            text: 'Failed to load active leases: ' + error.message,
+            confirmButtonColor: '#3b82f6'
+        });
     }
-    
-    activeBookings.forEach(booking => {
-        const option = document.createElement('option');
-        option.value = booking.id;
-        option.textContent = `Lease #${booking.id} - ${booking.client_name || booking.tenant || 'Unknown Tenant'}`;
-        option.dataset.bookingData = JSON.stringify(booking);
-        select.appendChild(option);
-    });
 }
 
 // Initialize Quick Actions in sidebar

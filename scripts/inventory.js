@@ -2,6 +2,7 @@
 import { supabase, departmentNames } from './config.js';
 
 export let inventory = [];
+export let stockTransactions = [];
 
 // Record stock transaction to history
 export async function recordStockTransaction(inventoryId, transactionType, quantity, reason, previousStock, newStock) {
@@ -188,4 +189,250 @@ export function filterInventory() {
     });
 
     renderInventory(filtered);
+}
+
+// Load stock transactions from database
+export async function loadStockTransactions() {
+    try {
+        console.log('📂 Loading stock transactions from database...');
+        const { data, error } = await supabase
+            .from('stock_history')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .limit(100);
+
+        if (error) {
+            console.error('❌ Error loading transactions:', error);
+            return;
+        }
+
+        if (!data || data.length === 0) {
+            console.log('📭 No transactions found');
+            stockTransactions = [];
+            renderStockActivity();
+            return;
+        }
+
+        // Transform transactions with inventory names
+        stockTransactions = data.map(trans => {
+            const product = inventory.find(inv => inv.id === trans.inventory_id);
+            return {
+                ...trans,
+                product_name: product ? product.name : 'Unknown Product',
+                icon: trans.transaction_type === 'stock_in' ? '📥' : '📤'
+            };
+        });
+
+        console.log(`✅ Loaded ${stockTransactions.length} stock transactions`);
+        console.log('📊 Transformed transactions:', stockTransactions);
+        renderStockActivity();
+    } catch (error) {
+        console.error('❌ Failed to load stock transactions:', error);
+    }
+}
+
+// Render stock activity tracker
+export function renderStockActivity() {
+    const activityList = document.getElementById('stockActivityList');
+    if (!activityList) return;
+
+    if (!stockTransactions || stockTransactions.length === 0) {
+        activityList.innerHTML = '<div class="p-4 text-center text-gray-500">No stock activity yet</div>';
+        return;
+    }
+
+    const html = stockTransactions.map(transaction => {
+        const date = new Date(transaction.created_at);
+        const formattedDate = date.toLocaleDateString();
+        const formattedTime = date.toLocaleTimeString();
+        
+        const isStockIn = transaction.transaction_type === 'stock_in';
+        const badgeColor = isStockIn ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800';
+        const badgeText = isStockIn ? 'Added' : 'Removed';
+        const quantitySign = isStockIn ? '+' : '-';
+
+        return `
+            <div class="px-6 py-4 hover:bg-gray-50 transition-colors">
+                <div class="flex items-start justify-between">
+                    <div class="flex items-start space-x-4 flex-1">
+                        <div class="text-2xl">${transaction.icon}</div>
+                        <div class="flex-1">
+                            <div class="flex items-center space-x-2 mb-1">
+                                <span class="font-semibold text-gray-900">${transaction.product_name}</span>
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${badgeColor}">
+                                    ${badgeText}
+                                </span>
+                            </div>
+                            <div class="text-sm text-gray-600 mb-1">
+                                Quantity: <span class="font-medium">${quantitySign}${transaction.quantity}</span> | 
+                                Stock: ${transaction.previous_stock} → ${transaction.new_stock}
+                            </div>
+                            <div class="text-sm text-gray-500">
+                                ${transaction.user_name ? `By: ${transaction.user_name}` : 'System'}
+                            </div>
+                            ${transaction.reason ? `<div class="text-sm text-gray-600 mt-1 italic">Reason: ${transaction.reason}</div>` : ''}
+                            <div class="text-xs text-gray-400 mt-2">${formattedDate} at ${formattedTime}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    activityList.innerHTML = html;
+}
+
+// Clear stock transactions history
+export async function clearStockTransactions() {
+    const result = await Swal.fire({
+        title: 'Clear Stock History?',
+        text: 'This will permanently delete all stock transaction records. This action cannot be undone.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#dc2626',
+        cancelButtonColor: '#6b7280',
+        confirmButtonText: 'Yes, clear it',
+        cancelButtonText: 'Cancel'
+    });
+
+    if (!result.isConfirmed) return;
+
+    try {
+        const { error } = await supabase
+            .from('stock_history')
+            .delete()
+            .neq('id', 0); // Delete all rows
+
+        if (error) {
+            Swal.fire('Error', 'Failed to clear history: ' + error.message, 'error');
+            return;
+        }
+
+        stockTransactions = [];
+        renderStockActivity();
+        Swal.fire('Cleared!', 'Stock history has been cleared.', 'success');
+    } catch (error) {
+        Swal.fire('Error', 'An error occurred: ' + error.message, 'error');
+    }
+}
+
+// Populate month filter for export
+export function populateMonthFilter() {
+    const filterSelect = document.getElementById('exportMonthFilter');
+    if (!filterSelect) return;
+
+    const months = new Set();
+    const currentYear = new Date().getFullYear();
+
+    stockTransactions.forEach(trans => {
+        const date = new Date(trans.created_at);
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        months.add(`${year}-${month}`);
+    });
+
+    const sortedMonths = Array.from(months).sort().reverse();
+    
+    filterSelect.innerHTML = '<option value="">All Months</option>';
+    sortedMonths.forEach(month => {
+        const [year, monthNum] = month.split('-');
+        const monthName = new Date(year, monthNum - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+        const option = document.createElement('option');
+        option.value = month;
+        option.textContent = monthName;
+        filterSelect.appendChild(option);
+    });
+}
+
+// Export stock history to CSV
+export async function exportStockHistoryCSV() {
+    const filterSelect = document.getElementById('exportMonthFilter');
+    const selectedMonth = filterSelect ? filterSelect.value : '';
+
+    let transactionsToExport = stockTransactions;
+    
+    if (selectedMonth) {
+        transactionsToExport = stockTransactions.filter(trans => {
+            const date = new Date(trans.created_at);
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            return `${year}-${month}` === selectedMonth;
+        });
+    }
+
+    if (transactionsToExport.length === 0) {
+        Swal.fire('No Data', 'No transactions to export for the selected period.', 'info');
+        return;
+    }
+
+    // Build CSV content
+    let csvContent = 'Stock History Report\n';
+    csvContent += `Generated: ${new Date().toLocaleString()}\n\n`;
+    
+    if (selectedMonth) {
+        const [year, monthNum] = selectedMonth.split('-');
+        const monthName = new Date(year, monthNum - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+        csvContent += `Period: ${monthName}\n\n`;
+    }
+
+    // Transaction details
+    csvContent += 'Transaction Details\n';
+    csvContent += 'Date,Time,Product,Type,Quantity,Previous Stock,New Stock,Reason,User\n';
+    
+    transactionsToExport.forEach(trans => {
+        const date = new Date(trans.created_at);
+        const dateStr = date.toLocaleDateString();
+        const timeStr = date.toLocaleTimeString();
+        const reason = trans.reason ? `"${trans.reason.replace(/"/g, '""')}"` : '';
+        
+        csvContent += `${dateStr},${timeStr},"${trans.product_name}",${trans.transaction_type},${trans.quantity},${trans.previous_stock},${trans.new_stock},${reason},"${trans.user_name || 'System'}"\n`;
+    });
+
+    // Summary by product
+    csvContent += '\n\nSummary by Product\n';
+    csvContent += 'Product,Stock In (Qty),Stock Out (Qty),Net Change\n';
+    
+    const productSummary = {};
+    transactionsToExport.forEach(trans => {
+        if (!productSummary[trans.product_name]) {
+            productSummary[trans.product_name] = { in: 0, out: 0 };
+        }
+        if (trans.transaction_type === 'stock_in') {
+            productSummary[trans.product_name].in += trans.quantity;
+        } else {
+            productSummary[trans.product_name].out += trans.quantity;
+        }
+    });
+
+    Object.entries(productSummary).forEach(([product, summary]) => {
+        const netChange = summary.in - summary.out;
+        csvContent += `"${product}",${summary.in},${summary.out},${netChange}\n`;
+    });
+
+    // Totals
+    const totalIn = transactionsToExport.filter(t => t.transaction_type === 'stock_in').reduce((sum, t) => sum + t.quantity, 0);
+    const totalOut = transactionsToExport.filter(t => t.transaction_type === 'stock_out').reduce((sum, t) => sum + t.quantity, 0);
+    csvContent += `\nTOTALS,${totalIn},${totalOut},${totalIn - totalOut}\n`;
+
+    // Current inventory status
+    csvContent += '\n\nCurrent Inventory Status\n';
+    csvContent += 'Product,Current Stock,Reorder Level,Category\n';
+    inventory.forEach(item => {
+        csvContent += `"${item.name}",${item.quantity},${item.reorder_level || 0},"${item.category || ''}"\n`;
+    });
+
+    // Create blob and download
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    const fileName = `stock-history-${selectedMonth || 'all-time'}-${new Date().getTime()}.csv`;
+    
+    link.setAttribute('href', url);
+    link.setAttribute('download', fileName);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    Swal.fire('Success', 'Stock history exported to CSV', 'success');
 }
