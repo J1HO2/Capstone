@@ -3,6 +3,43 @@ import { supabase, departmentNames } from './config.js';
 
 export let inventory = [];
 
+// Record stock transaction to history
+export async function recordStockTransaction(inventoryId, transactionType, quantity, reason, previousStock, newStock) {
+    try {
+        // Get current user info from Supabase auth
+        const { data: { user }, error: userError } = await supabase.auth.getUser();
+        
+        if (userError || !user) {
+            console.warn('Could not get user info for transaction log');
+        }
+
+        const { error } = await supabase
+            .from('stock_history')
+            .insert([{
+                inventory_id: inventoryId,
+                transaction_type: transactionType,
+                quantity: quantity,
+                reason: reason || 'No reason provided',
+                user_email: user?.email || 'unknown',
+                user_name: user?.user_metadata?.full_name || user?.email || 'unknown',
+                previous_stock: previousStock,
+                new_stock: newStock,
+                created_at: new Date().toISOString()
+            }]);
+
+        if (error) {
+            console.error('❌ Failed to record stock transaction:', error.message);
+            return false;
+        }
+
+        console.log(`✅ Transaction recorded: ${transactionType} - ${quantity} units`);
+        return true;
+    } catch (err) {
+        console.error('⚠️ Unexpected error recording transaction:', err);
+        return false;
+    }
+}
+
 // Load inventory from Supabase
 export async function loadInventory() {
     const { data, error } = await supabase

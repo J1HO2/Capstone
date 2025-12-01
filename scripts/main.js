@@ -1,9 +1,11 @@
 // Main Application Script
 import { loadComponent, loadPage } from './loader.js';
 import { initializeNavigation } from './navigation.js';
-import { loadInventory, renderInventory, deleteInventoryItem, filterInventory } from './inventory.js';
+import { loadInventory, renderInventory, deleteInventoryItem, filterInventory, recordStockTransaction } from './inventory.js';
 import { loadRooms, renderRooms, deleteRoom, updateRoomDropdown } from './rooms.js';
 import { loadBookings, renderBookings, cancelLease, deleteLease } from './bookings.js';
+import { loadStockHistory, renderStockHistory, filterStockHistory } from './stock-history.js';
+import { loadDetailedStockHistory, filterDetailedStockHistory, resetDetailedStockHistoryFilters } from './stock-history-detailed.js';
 
 // Global state for stock operations
 let selectedProductId = null;
@@ -96,6 +98,46 @@ window.initInventoryPage = async function() {
                 confirmButtonColor: '#eab308'
             });
         });
+    }
+};
+
+window.initStockHistoryPage = async function() {
+    await loadDetailedStockHistory();
+    
+    // Attach event listeners for filters
+    const applyBtn = document.getElementById('applyFiltersBtn');
+    const resetBtn = document.getElementById('resetFiltersBtn');
+    const typeFilter = document.getElementById('detailedTypeFilter');
+    const startDate = document.getElementById('detailedStartDate');
+    const endDate = document.getElementById('detailedEndDate');
+    const productSearch = document.getElementById('detailedProductSearch');
+    
+    if (applyBtn) applyBtn.addEventListener('click', filterDetailedStockHistory);
+    if (resetBtn) resetBtn.addEventListener('click', resetDetailedStockHistoryFilters);
+    if (typeFilter) typeFilter.addEventListener('change', filterDetailedStockHistory);
+    if (startDate) startDate.addEventListener('change', filterDetailedStockHistory);
+    if (endDate) endDate.addEventListener('change', filterDetailedStockHistory);
+    if (productSearch) productSearch.addEventListener('input', filterDetailedStockHistory);
+    
+    // Export button (if needed in future)
+    const exportBtn = document.getElementById('exportHistoryBtn');
+    if (exportBtn) {
+        exportBtn.addEventListener('click', () => {
+            Swal.fire({
+                title: 'Export Feature',
+                text: 'PDF export feature coming soon!',
+                icon: 'info',
+                confirmButtonColor: '#eab308'
+            });
+        });
+    }
+};
+
+window.openDetailedTransactionModal = function(event, index) {
+    event.stopPropagation();
+    const { openDetailedTransactionModal } = window.__stockHistoryModule;
+    if (openDetailedTransactionModal) {
+        openDetailedTransactionModal(event, index);
     }
 };
 
@@ -1023,7 +1065,83 @@ function setupPaymentFilters(payments, credits) {
 window.initDashboardPage = async function() {
     console.log('Dashboard page initialized');
     await loadDashboardData();
+    
+    // Load stock history
+    await loadStockHistory();
+    
+    // Attach event listeners for stock history filters
+    const typeFilter = document.getElementById('stockHistoryTypeFilter');
+    const dateFilter = document.getElementById('stockHistoryDateFilter');
+    
+    if (typeFilter) typeFilter.addEventListener('change', filterStockHistory);
+    if (dateFilter) dateFilter.addEventListener('change', filterStockHistory);
+    
+    // Setup real-time listeners for stock history updates
+    setupRealtimeStockHistoryListener();
 };
+
+// Setup real-time listener for stock history changes
+async function setupRealtimeStockHistoryListener() {
+    try {
+        const { supabase } = await import('./config.js');
+        
+        // Listen for new stock history records (inserts)
+        const subscription = supabase
+            .channel('stock_history_changes')
+            .on(
+                'postgres_changes',
+                {
+                    event: 'INSERT',
+                    schema: 'public',
+                    table: 'stock_history'
+                },
+                async (payload) => {
+                    console.log('🔄 Real-time stock history update received:', payload.new);
+                    
+                    // Reload stock history to show new transaction
+                    if (typeof loadStockHistory === 'function') {
+                        await loadStockHistory();
+                    }
+                    
+                    // Show toast notification
+                    const record = payload.new;
+                    const transactionType = record.transaction_type === 'stock_in' ? 'Stock In' : 'Stock Out';
+                    const icon = record.transaction_type === 'stock_in' ? 'success' : 'info';
+                    const color = record.transaction_type === 'stock_in' ? '#10b981' : '#3b82f6';
+                    
+                    Swal.fire({
+                        toast: true,
+                        position: 'top-end',
+                        icon: icon,
+                        title: `📊 ${transactionType}: ${record.quantity} units`,
+                        text: `User: ${record.user_name || 'Unknown'}`,
+                        showConfirmButton: false,
+                        timer: 4000,
+                        background: '#fff',
+                        color: '#000',
+                        width: '22rem',
+                        customClass: {
+                            popup: 'rounded-lg shadow border-l-4 border-gray-200',
+                            title: 'font-bold text-lg'
+                        },
+                        didOpen: (toast) => {
+                            toast.style.borderLeftColor = color;
+                        }
+                    });
+                }
+            )
+            .subscribe((status) => {
+                if (status === 'SUBSCRIBED') {
+                    console.log('✅ Real-time stock history listener subscribed');
+                }
+            });
+        
+        // Store subscription reference for cleanup if needed
+        window.__stockHistorySubscription = subscription;
+    } catch (err) {
+        console.error('⚠️ Error setting up real-time listener:', err);
+    }
+}
 
 // Load and display dashboard statistics
 async function loadDashboardData() {
@@ -1481,7 +1599,23 @@ async function initializeFormHandlers() {
                 return;
             }
             
+            // Record transaction in stock history
+            await recordStockTransaction(
+                selectedProductId,
+                currentStockAction === 'in' ? 'stock_in' : 'stock_out',
+                quantity,
+                reason,
+                products.stock,
+                newStock
+            );
+            
             await loadInventory();
+            
+            // Reload dashboard stock history if on dashboard
+            if (typeof loadStockHistory !== 'undefined') {
+                await loadStockHistory();
+            }
+            
             closeModal('stockUpdateModal');
             
             Swal.fire({
