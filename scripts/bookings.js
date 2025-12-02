@@ -158,6 +158,7 @@ export async function deleteLease(bookingId) {
 
         bookings = bookings.filter(b => b.id !== bookingId);
         renderBookings(bookings);
+        await loadBookings(); // Reload from database to ensure consistency
 
         Swal.fire({
             toast: true,

@@ -161,16 +161,13 @@ window.openDetailedTransactionModal = function(event, index) {
 };
 
 window.initRoomsPage = async function() {
-    // Small delay to ensure DOM is ready
-    await new Promise(resolve => setTimeout(resolve, 100));
+    // Load data in parallel for better performance
+    await Promise.all([
+        loadRooms(),
+        loadBookings()
+    ]);
     
-    await loadRooms();
-    await loadBookings();
-    
-    // Add another small delay to ensure buttons are in DOM
-    await new Promise(resolve => setTimeout(resolve, 50));
-    
-    // Attach event listeners for rooms page
+    // Attach event listeners for rooms page (no delays needed - DOM is ready)
     const addRoomBtn = document.getElementById('addRoomBtn');
     if (addRoomBtn && !addRoomBtn.dataset.bound) {
         addRoomBtn.dataset.bound = 'true';

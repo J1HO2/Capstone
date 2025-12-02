@@ -41,10 +41,16 @@ export function renderRooms(data = rooms) {
     }
 
     data.forEach(room => {
-        const statusColor =
-            room.status === 'Available'
-                ? 'bg-green-100 text-green-600'
-                : 'bg-red-100 text-red-600';
+        // Determine status display and color
+        let statusDisplay = room.status;
+        let statusColor = 'bg-gray-100 text-gray-600';
+        
+        if (room.status === 'Available') {
+            statusColor = 'bg-green-100 text-green-600';
+        } else if (room.status === 'Occupied' || room.status === 'Full') {
+            statusDisplay = 'Occupied';
+            statusColor = 'bg-red-100 text-red-600';
+        }
 
         const row = document.createElement('tr');
         row.className = 'hover:bg-gray-50 transition';
@@ -56,13 +62,14 @@ export function renderRooms(data = rooms) {
             <td class="px-6 py-4 text-sm text-gray-900">₱${room.rate.toLocaleString()}</td>
             <td class="px-6 py-4 text-sm">
                 <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full ${statusColor}">
-                    ${room.status}
+                    ${statusDisplay}
                 </span>
             </td>
             <td class="px-6 py-4 text-center">
                 <button 
                     onclick="window.deleteRoom(${room.id})" 
-                    class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg font-medium transition-colors duration-150 shadow-sm hover:shadow-md inline-flex items-center space-x-1">
+                    class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg font-medium transition-colors duration-150 shadow-sm hover:shadow-md inline-flex items-center space-x-1"
+                    ${room.status === 'Occupied' ? 'disabled title="Cannot delete occupied room"' : ''}>
                     <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                         <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"></path>
                     </svg>
@@ -78,6 +85,17 @@ export function renderRooms(data = rooms) {
 export async function deleteRoom(id) {
     const room = rooms.find(r => r.id === id);
     if (!room) return;
+
+    // Prevent deletion of occupied rooms
+    if (room.status === 'Occupied' || room.status === 'Full') {
+        Swal.fire({
+            icon: "error",
+            title: "Cannot Delete",
+            text: "This room is currently occupied. Please end the lease first before deleting the room.",
+            confirmButtonColor: "#eab308"
+        });
+        return;
+    }
 
     const result = await Swal.fire({
         title: `Delete "${room.name}"?`,
@@ -114,6 +132,7 @@ export async function deleteRoom(id) {
 
         rooms = rooms.filter(r => r.id !== id);
         renderRooms();
+        await loadRooms(); // Reload from database to ensure consistency
 
         Swal.fire({
             toast: true,
@@ -160,4 +179,28 @@ export function updateRoomDropdown() {
         option.textContent = `${room.name} - ${room.type} (₱${room.rate.toLocaleString()})`;
         select.appendChild(option);
     });
+}
+
+// Filter rooms based on search and type
+export function filterRooms() {
+    const searchInput = document.getElementById('roomSearchInput');
+    const typeFilter = document.getElementById('roomTypeFilter');
+    
+    let filtered = [...rooms];
+    
+    // Apply search filter
+    if (searchInput && searchInput.value) {
+        const searchTerm = searchInput.value.toLowerCase();
+        filtered = filtered.filter(room => 
+            room.name.toLowerCase().includes(searchTerm) ||
+            room.type.toLowerCase().includes(searchTerm)
+        );
+    }
+    
+    // Apply type filter
+    if (typeFilter && typeFilter.value) {
+        filtered = filtered.filter(room => room.type === typeFilter.value);
+    }
+    
+    renderRooms(filtered);
 }
