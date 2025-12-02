@@ -1963,6 +1963,7 @@ async function initializeFormHandlers() {
             
             await loadRooms();
             await loadBookings();
+            updateRoomDropdown(); // Refresh dropdown to remove newly-occupied room
             closeModal('newBookingModal');
             
             Swal.fire({

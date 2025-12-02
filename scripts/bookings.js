@@ -1,6 +1,6 @@
 // Bookings Module
 import { supabase } from './config.js';
-import { rooms } from './rooms.js';
+import { rooms, loadRooms } from './rooms.js';
 
 export let bookings = [];
 
@@ -111,6 +111,15 @@ export async function cancelLease(bookingId) {
         if (room) room.status = "Available";
 
         renderBookings(bookings);
+        
+        // Reload from database to ensure consistency
+        await loadBookings();
+        if (typeof loadRooms === 'function') {
+            await loadRooms();
+            // Update dropdown to show newly-available room
+            const { updateRoomDropdown } = await import('./rooms.js');
+            updateRoomDropdown();
+        }
 
         Swal.fire({
             toast: true,
