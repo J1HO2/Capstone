@@ -637,16 +637,23 @@ async function loadPaymentSummaryData() {
     try {
         const { supabase } = await import('./config.js');
         
-        // Fetch all data
+        // Fetch all data with proper relationships
         const [paymentsResult, creditsResult, bookingsResult] = await Promise.all([
-            supabase.from('payments').select('*, bookings(tenant, client_name, room_name)').order('created_at', { ascending: false }),
-            supabase.from('credits').select('*, bookings(tenant, client_name, room_name)').order('created_at', { ascending: false }),
-            supabase.from('bookings').select('*').eq('status', 'Active')
+            supabase.from('payments').select('*, bookings!lease_id(id, tenant, client_name, room_name)').order('created_at', { ascending: false }),
+            supabase.from('credits').select('*, bookings!lease_id(id, tenant, client_name, room_name)').order('created_at', { ascending: false }),
+            supabase.from('bookings').select('*')
         ]);
         
         const payments = paymentsResult.data || [];
         const credits = creditsResult.data || [];
         const bookings = bookingsResult.data || [];
+        
+        console.log('📊 Payments fetched:', payments);
+        console.log('💳 Credits fetched:', credits);
+        console.log('📋 All Bookings fetched:', bookings.length);
+        if (paymentsResult.error) console.error('❌ Payments error:', paymentsResult.error);
+        if (creditsResult.error) console.error('❌ Credits error:', creditsResult.error);
+        if (bookingsResult.error) console.error('❌ Bookings error:', bookingsResult.error);
         
         const currentDate = new Date();
         const currentMonth = currentDate.getMonth();
@@ -919,12 +926,13 @@ async function exportPaymentTrackerCSV() {
         
         // Add payment rows
         payments.forEach(p => {
+            const booking = Array.isArray(p.bookings) ? p.bookings[0] : p.bookings;
             csvData.push([
-                p.bookings?.tenant || p.bookings?.client_name || 'N/A',
-                p.bookings?.room_name || 'N/A',
+                booking?.tenant || booking?.client_name || 'N/A',
+                booking?.room_name || 'N/A',
                 new Date(p.created_at || p.payment_date).toLocaleDateString(),
                 parseFloat(p.amount || 0).toFixed(2),
-                parseFloat(p.bookings?.balance || 0).toFixed(2),
+                parseFloat(booking?.balance || 0).toFixed(2),
                 p.payment_method || 'Cash',
                 p.receipt_number || '—',
                 `"${(p.notes || '').replace(/"/g, '""')}"`
@@ -985,26 +993,34 @@ function loadPaymentActivityTable(payments, credits) {
     
     // Combine payments and credits
     const activities = [
-        ...payments.map(p => ({
-            date: new Date(p.created_at || p.payment_date),
-            tenant: p.bookings?.tenant || p.bookings?.client_name || 'N/A',
-            room: p.bookings?.room_name || 'N/A',
-            type: 'Payment',
-            amount: parseFloat(p.amount) || 0,
-            note: p.notes || p.payment_method || '—',
-            lease_id: p.lease_id,
-            raw_type: 'rental_payment'
-        })),
-        ...credits.map(c => ({
-            date: new Date(c.created_at || c.credit_date),
-            tenant: c.bookings?.tenant || c.bookings?.client_name || 'N/A',
-            room: c.bookings?.room_name || 'N/A',
-            type: 'Credit',
-            amount: parseFloat(c.amount) || 0,
-            note: c.notes || c.reason || '—',
-            lease_id: c.lease_id,
-            raw_type: 'rental_credit'
-        }))
+        ...payments.map(p => {
+            // Handle both direct booking object and array of bookings
+            const booking = Array.isArray(p.bookings) ? p.bookings[0] : p.bookings;
+            return {
+                date: new Date(p.created_at || p.payment_date),
+                tenant: booking?.tenant || booking?.client_name || 'N/A',
+                room: booking?.room_name || 'N/A',
+                type: 'Payment',
+                amount: parseFloat(p.amount) || 0,
+                note: p.notes || p.payment_method || '—',
+                lease_id: p.lease_id,
+                raw_type: 'rental_payment'
+            };
+        }),
+        ...credits.map(c => {
+            // Handle both direct booking object and array of bookings
+            const booking = Array.isArray(c.bookings) ? c.bookings[0] : c.bookings;
+            return {
+                date: new Date(c.created_at || c.credit_date),
+                tenant: booking?.tenant || booking?.client_name || 'N/A',
+                room: booking?.room_name || 'N/A',
+                type: 'Credit',
+                amount: parseFloat(c.amount) || 0,
+                note: c.notes || c.reason || '—',
+                lease_id: c.lease_id,
+                raw_type: 'rental_credit'
+            };
+        })
     ].sort((a, b) => b.date - a.date);
     
     if (activities.length === 0) {
