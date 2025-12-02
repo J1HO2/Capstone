@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Insert Test Payments</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-gray-100 p-8">
+    <div class="max-w-md mx-auto bg-white rounded-lg shadow-lg p-8">
+        <h1 class="text-2xl font-bold text-gray-900 mb-2">Insert Test Payments</h1>
+        <p class="text-gray-600 mb-6">Click the button below to add sample payment data to your database</p>
+        
+        <button onclick="insertTestPayments()" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg transition-colors">
+            ➕ Insert Test Payments
+        </button>
+        
+        <div id="status" class="mt-6 p-4 rounded-lg hidden" role="alert"></div>
+        
+        <button onclick="location.href='index.html'" class="mt-4 w-full bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg transition-colors">
+            Back to App
+        </button>
+    </div>
+
+    <script type="module">
+        import { SUPABASE_CONFIG } from './config/credentials.js';
+        
+        const supabase = window.supabase.createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey);
+        
+        window.insertTestPayments = async function() {
+            const statusDiv = document.getElementById('status');
+            statusDiv.classList.remove('hidden');
+            statusDiv.className = 'mt-6 p-4 rounded-lg bg-blue-50 border border-blue-200';
+            statusDiv.innerHTML = '<p class="text-blue-700">⏳ Fetching bookings...</p>';
+            
+            try {
+                // Fetch an existing booking
+                const { data: bookings, error: bookingError } = await supabase
+                    .from('bookings')
+                    .select('id, tenant, room_name')
+                    .limit(1);
+                
+                if (bookingError) throw bookingError;
+                if (!bookings || bookings.length === 0) {
+                    statusDiv.className = 'mt-6 p-4 rounded-lg bg-red-50 border border-red-200';
+                    statusDiv.innerHTML = '<p class="text-red-700">❌ No bookings found! Please create a lease first.</p>';
+                    return;
+                }
+                
+                const booking = bookings[0];
+                statusDiv.innerHTML = `<p class="text-blue-700">✅ Found booking: <strong>${booking.tenant}</strong> in <strong>${booking.room_name}</strong></p>`;
+                
+                // Insert test payments
+                const testPayments = [
+                    {
+                        lease_id: booking.id,
+                        amount: 5000,
+                        payment_method: 'Cash',
+                        payment_type: 'Monthly Rent',
+                        receipt_number: 'RCP-001',
+                        notes: 'Monthly rent payment',
+                        payment_date: '2025-12-01'
+                    },
+                    {
+                        lease_id: booking.id,
+                        amount: 2000,
+                        payment_method: 'Bank Transfer',
+                        payment_type: 'Partial Payment',
+                        receipt_number: 'RCP-002',
+                        notes: 'Partial payment for November',
+                        payment_date: '2025-11-25'
+                    },
+                    {
+                        lease_id: booking.id,
+                        amount: 500,
+                        payment_method: 'Cash',
+                        payment_type: 'Deposit',
+                        receipt_number: 'RCP-003',
+                        notes: 'Security deposit',
+                        payment_date: '2025-11-15'
+                    }
+                ];
+                
+                statusDiv.innerHTML += '<p class="text-blue-700 mt-2">⏳ Inserting payments...</p>';
+                
+                const { data: payments, error: paymentError } = await supabase
+                    .from('payments')
+                    .insert(testPayments)
+                    .select();
+                
+                if (paymentError) throw paymentError;
+                
+                statusDiv.innerHTML += `<p class="text-blue-700 mt-2">✅ Inserted ${payments.length} payments</p>`;
+                
+                // Insert test credit
+                const { data: credit, error: creditError } = await supabase
+                    .from('credits')
+                    .insert({
+                        lease_id: booking.id,
+                        amount: 1000,
+                        reason: 'Early payment discount',
+                        reference: 'CREDIT-001',
+                        notes: 'Discount for early payment',
+                        credit_date: '2025-12-02'
+                    })
+                    .select();
+                
+                if (creditError) throw creditError;
+                
+                statusDiv.className = 'mt-6 p-4 rounded-lg bg-green-50 border border-green-200';
+                statusDiv.innerHTML = `
+                    <p class="text-green-700 font-semibold mb-3">✅ Success! Test data inserted:</p>
+                    <ul class="text-green-700 space-y-1 text-sm">
+                        <li>• 3 payments (₱5000, ₱2000, ₱500)</li>
+                        <li>• 1 credit (₱1000)</li>
+                        <li>• For tenant: <strong>${booking.tenant}</strong></li>
+                    </ul>
+                    <p class="text-green-700 mt-3 font-semibold">Now go to Payment & Credit History to see them! 🎉</p>
+                `;
+                
+            } catch (error) {
+                console.error('Error:', error);
+                statusDiv.className = 'mt-6 p-4 rounded-lg bg-red-50 border border-red-200';
+                statusDiv.innerHTML = `<p class="text-red-700"><strong>❌ Error:</strong> ${error.message}</p>`;
+            }
+        };
+    </script>
+</body>
+</html>

@@ -226,14 +226,14 @@ window.initRoomsPage = async function() {
         console.warn('⚠️ Add Payment button not found in DOM!');
     }
     
-    // Add Credit button - BULLETPROOF VERSION
+    // Add Balance button - BULLETPROOF VERSION
     const addCreditBtn = document.getElementById('addCreditBtn');
     if (addCreditBtn && !addCreditBtn.dataset.bound) {
         // Prevent duplicate listeners
         addCreditBtn.dataset.bound = 'true';
         addCreditBtn.addEventListener('click', async () => {
             try {
-                console.log('💳 Add Credit button clicked!');
+                console.log('💳 Add Balance button clicked!');
                 console.log('🔍 Checking modal availability...');
                 
                 // Close all other modals first
@@ -249,11 +249,11 @@ window.initRoomsPage = async function() {
                 // Check if modal exists
                 const creditModal = document.getElementById('addCreditModal');
                 if (!creditModal) {
-                    console.error('❌ Add Credit modal not found in DOM');
-                    throw new Error('Add Credit modal not found. Please refresh the page.');
+                    console.error('❌ Add Balance modal not found in DOM');
+                    throw new Error('Add Balance modal not found. Please refresh the page.');
                 }
                 
-                console.log('✅ Credit modal found, opening...');
+                console.log('✅ Balance modal found, opening...');
                 
                 // Clear and open modal
                 const form = document.getElementById('addCreditForm');
@@ -291,25 +291,25 @@ window.initRoomsPage = async function() {
                 }, 300);
                 
             } catch (error) {
-                console.error('❌ Critical error with Add Credit button:', error);
+                console.error('❌ Critical error with Add Balance button:', error);
                 Swal.fire({
                     icon: 'error',
-                    title: 'Cannot Open Add Credit',
-                    text: error.message || 'Failed to open Add Credit modal. Please refresh the page.',
+                    title: 'Cannot Open Add Balance',
+                    text: error.message || 'Failed to open Add Balance modal. Please refresh the page.',
                     confirmButtonColor: '#ef4444',
                     confirmButtonText: 'OK'
                 });
             }
         });
-        console.log('✅ Add Credit button listener attached (bulletproof version)');
+        console.log('✅ Add Balance button listener attached (bulletproof version)');
     } else if (!addCreditBtn) {
-        console.error('❌ Add Credit button not found in DOM!');
+        console.error('❌ Add Balance button not found in DOM!');
         
         // Try to find it with a delay
         setTimeout(() => {
             const lateBtn = document.getElementById('addCreditBtn');
             if (lateBtn && !lateBtn.dataset.bound) {
-                console.log('🔄 Found Add Credit button with delay, attaching listener...');
+                console.log('🔄 Found Add Balance button with delay, attaching listener...');
                 lateBtn.dataset.bound = 'true';
                 // Re-run the same logic
                 lateBtn.click();
