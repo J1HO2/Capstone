@@ -6,6 +6,9 @@ const supabase = createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey);
 
 // Check authentication status on page load
 window.addEventListener("DOMContentLoaded", async () => {
+    // Add a small delay to allow Supabase to initialize session from storage
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
     // Get current session from Supabase
     const { data: { session }, error } = await supabase.auth.getSession();
 
