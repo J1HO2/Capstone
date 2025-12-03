@@ -43,10 +43,26 @@ window.openStockModal = async function(productId, action) {
 
     document.getElementById('stockProductName').value = product.name;
     document.getElementById('currentStock').value = product.stock;
+    document.getElementById('currentStockDisplay').textContent = product.stock;
+    document.getElementById('projectedStockDisplay').textContent = product.stock;
     document.getElementById('stockUpdateTitle').textContent = action === 'in' ? 'Stock In' : 'Stock Out';
     document.getElementById('confirmStockUpdate').textContent = action === 'in' ? 'Add Stock' : 'Remove Stock';
     document.getElementById('stockQuantity').value = '';
     document.getElementById('stockReason').value = '';
+    document.getElementById('changeIndicator').textContent = '+0';
+    document.getElementById('changeIndicator').className = 'text-xs font-medium text-gray-600';
+    
+    // Reset projected stock display color
+    const projectedDisplay = document.getElementById('projectedStockDisplay');
+    if (projectedDisplay) {
+        if (product.stock <= 0) {
+            projectedDisplay.className = 'text-2xl font-bold text-red-600';
+        } else if (product.stock <= 10) {
+            projectedDisplay.className = 'text-2xl font-bold text-orange-600';
+        } else {
+            projectedDisplay.className = 'text-2xl font-bold text-green-600';
+        }
+    }
     
     const modal = document.getElementById('stockUpdateModal');
     if (modal) {
@@ -1698,6 +1714,49 @@ async function initializeFormHandlers() {
     const stockUpdateForm = document.getElementById('stockUpdateForm');
     if (stockUpdateForm && !stockUpdateForm.dataset.bound) {
         stockUpdateForm.dataset.bound = 'true';
+        
+        // Add real-time update listener for stock quantity
+        const stockQuantityInput = document.getElementById('stockQuantity');
+        if (stockQuantityInput) {
+            stockQuantityInput.addEventListener('input', function() {
+                const currentStock = parseInt(document.getElementById('currentStock').value) || 0;
+                const quantity = parseInt(this.value) || 0;
+                
+                // Calculate projected stock based on action
+                let projectedStock = currentStock;
+                let changeIndicator = 0;
+                
+                if (currentStockAction === 'in') {
+                    projectedStock = currentStock + quantity;
+                    changeIndicator = +quantity;
+                } else {
+                    projectedStock = currentStock - quantity;
+                    changeIndicator = -quantity;
+                }
+                
+                // Update display elements
+                const projectedDisplay = document.getElementById('projectedStockDisplay');
+                const changeIndicatorEl = document.getElementById('changeIndicator');
+                
+                if (projectedDisplay) {
+                    projectedDisplay.textContent = Math.max(0, projectedStock);
+                    // Update color based on projected stock
+                    if (projectedStock <= 0) {
+                        projectedDisplay.className = 'text-2xl font-bold text-red-600';
+                    } else if (projectedStock <= 10) {
+                        projectedDisplay.className = 'text-2xl font-bold text-orange-600';
+                    } else {
+                        projectedDisplay.className = 'text-2xl font-bold text-green-600';
+                    }
+                }
+                
+                if (changeIndicatorEl) {
+                    changeIndicatorEl.textContent = (changeIndicator >= 0 ? '+' : '') + changeIndicator;
+                    changeIndicatorEl.className = 'text-xs font-medium ' + (changeIndicator >= 0 ? 'text-green-600' : 'text-red-600');
+                }
+            });
+        }
+        
         stockUpdateForm.addEventListener('submit', async function(e) {
             e.preventDefault();
             

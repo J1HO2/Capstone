@@ -122,8 +122,20 @@ export async function deleteInventoryItem(id) {
     const item = inventory.find(p => p.id === id);
     if (!item) return;
 
-    const confirmDelete = confirm(`Are you sure you want to delete "${item.name}" from the inventory?`);
-    if (!confirmDelete) return;
+    const result = await Swal.fire({
+        title: 'Delete Product?',
+        text: `Are you sure you want to delete "${item.name}" from inventory? This action cannot be undone.`,
+        icon: 'warning',
+        position: 'center',
+        showCancelButton: true,
+        confirmButtonColor: '#ef4444',
+        cancelButtonColor: '#6b7280',
+        confirmButtonText: 'Delete',
+        cancelButtonText: 'Cancel',
+        allowOutsideClick: false
+    });
+
+    if (!result.isConfirmed) return;
 
     try {
         const { error } = await supabase
@@ -136,8 +148,8 @@ export async function deleteInventoryItem(id) {
             Swal.fire({
                 icon: "error",
                 title: "Delete Failed",
-                text: "Could not remove this product from Supabase.",
-                confirmButtonColor: "#eab308"
+                text: "Could not remove this product from inventory.",
+                confirmButtonColor: "#ef4444"
             });
             return;
         }
@@ -148,13 +160,7 @@ export async function deleteInventoryItem(id) {
             icon: "success",
             title: `"${item.name}" deleted successfully`,
             showConfirmButton: false,
-            timer: 1500,
-            background: "#fff",
-            color: "#000",
-            width: "18rem",
-            customClass: {
-                popup: "rounded-lg shadow border border-gray-200 text-sm"
-            }
+            timer: 2000
         });
 
         await loadInventory();
@@ -164,7 +170,7 @@ export async function deleteInventoryItem(id) {
             icon: "error",
             title: "Unexpected Error",
             text: "Something went wrong while deleting.",
-            confirmButtonColor: "#eab308"
+            confirmButtonColor: "#ef4444"
         });
     }
 }

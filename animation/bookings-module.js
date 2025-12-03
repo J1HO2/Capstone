@@ -59,9 +59,11 @@ export async function cancelLease(bookingId) {
         title: "End Lease?",
         text: `Are you sure you want to end the lease for ${booking.tenant}?`,
         icon: "warning",
+        position: "center",
         showCancelButton: true,
         confirmButtonColor: "#eab308",
-        confirmButtonText: "Yes, end it"
+        confirmButtonText: "Yes, end it",
+        allowOutsideClick: false
     });
 
     if (!confirm.isConfirmed) return;
@@ -98,9 +100,11 @@ export async function deleteLease(bookingId) {
         title: "Delete Lease?",
         text: `This will permanently remove the lease for ${booking.tenant}.`,
         icon: "warning",
+        position: "center",
         showCancelButton: true,
         confirmButtonColor: "#dc2626",
-        confirmButtonText: "Yes, delete it"
+        confirmButtonText: "Yes, delete it",
+        allowOutsideClick: false
     });
 
     if (!confirm.isConfirmed) return;
