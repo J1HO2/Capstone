@@ -2219,8 +2219,9 @@ async function initializeFormHandlers() {
                     if (!reason.trim()) {
                         throw new Error('Please select a credit reason');
                     }
+                    // Make description optional - if empty, store a default note
                     if (!notes.trim()) {
-                        throw new Error('Please enter a description');
+                        console.log('ℹ️ No description provided, using default text');
                     }
                     
                     console.log('✅ Validation passed');
@@ -2249,7 +2250,7 @@ async function initializeFormHandlers() {
                         lease_id: leaseId,
                         amount: amount,
                         reason: reason,
-                        notes: notes,
+                        notes: notes.trim() || 'No description provided',
                         reference_number: reference?.trim() || null,
                         credit_date: new Date().toISOString().split('T')[0],
                         created_at: new Date().toISOString()

@@ -243,7 +243,7 @@ export function renderStockActivity() {
     if (!activityList) return;
 
     if (!stockTransactions || stockTransactions.length === 0) {
-        activityList.innerHTML = '<div class="p-4 text-center text-gray-500">No stock activity yet</div>';
+        activityList.innerHTML = '<div class="px-4 py-4 text-center text-gray-500 text-xs">No stock activity yet</div>';
         return;
     }
 
@@ -258,26 +258,27 @@ export function renderStockActivity() {
         const quantitySign = isStockIn ? '+' : '-';
 
         return `
-            <div class="px-6 py-4 hover:bg-gray-50 transition-colors">
+            <div class="px-4 py-3 hover:bg-gray-50 transition-colors">
                 <div class="flex items-start justify-between">
-                    <div class="flex items-start space-x-4 flex-1">
-                        <div class="text-2xl">${transaction.icon}</div>
+                    <div class="flex items-start space-x-3 flex-1">
+                        <div class="text-xl leading-none pt-0.5">${transaction.icon}</div>
                         <div class="flex-1">
-                            <div class="flex items-center space-x-2 mb-1">
-                                <span class="font-semibold text-gray-900">${transaction.product_name}</span>
-                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${badgeColor}">
+                            <div class="flex items-center space-x-2 mb-0.5">
+                                <span class="font-semibold text-gray-900 text-sm">${transaction.product_name}</span>
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${badgeColor}">
                                     ${badgeText}
                                 </span>
                             </div>
-                            <div class="text-sm text-gray-600 mb-1">
-                                Quantity: <span class="font-medium">${quantitySign}${transaction.quantity}</span> | 
+                            <div class="text-xs text-gray-600 mb-0.5">
+                                Qty: <span class="font-medium">${quantitySign}${transaction.quantity}</span>
+                                <span class="mx-1 text-gray-300">•</span>
                                 Stock: ${transaction.previous_stock} → ${transaction.new_stock}
                             </div>
-                            <div class="text-sm text-gray-500">
+                            <div class="text-[11px] text-gray-500">
                                 ${transaction.user_name ? `By: ${transaction.user_name}` : 'System'}
                             </div>
-                            ${transaction.reason ? `<div class="text-sm text-gray-600 mt-1 italic">Reason: ${transaction.reason}</div>` : ''}
-                            <div class="text-xs text-gray-400 mt-2">${formattedDate} at ${formattedTime}</div>
+                            ${transaction.reason ? `<div class="text-[11px] text-gray-600 mt-0.5 italic truncate">Reason: ${transaction.reason}</div>` : ''}
+                            <div class="text-[10px] text-gray-400 mt-1">${formattedDate} at ${formattedTime}</div>
                         </div>
                     </div>
                 </div>
@@ -350,13 +351,13 @@ export function populateMonthFilter() {
     });
 }
 
-// Export stock history to CSV
+// Export stock history to CSV (inventory-style report)
 export async function exportStockHistoryCSV() {
     const filterSelect = document.getElementById('exportMonthFilter');
     const selectedMonth = filterSelect ? filterSelect.value : '';
 
     let transactionsToExport = stockTransactions;
-    
+
     if (selectedMonth) {
         transactionsToExport = stockTransactions.filter(trans => {
             const date = new Date(trans.created_at);
@@ -366,73 +367,153 @@ export async function exportStockHistoryCSV() {
         });
     }
 
-    if (transactionsToExport.length === 0) {
-        Swal.fire('No Data', 'No transactions to export for the selected period.', 'info');
+    if (!inventory || inventory.length === 0) {
+        Swal.fire('No Data', 'No inventory items loaded to export.', 'info');
         return;
     }
 
-    // Build CSV content
-    let csvContent = 'Stock History Report\n';
-    csvContent += `Generated: ${new Date().toLocaleString()}\n\n`;
-    
+    // Helper to format numbers
+    const fmt = (value) => (value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    // Determine period labels
+    let titleLine = 'INVENTORY REPORT';
+    let subtitleLine = '';
+    let beginningLabel = 'Beginning Inventory';
+    let salesLabel = 'SALES';
+
     if (selectedMonth) {
         const [year, monthNum] = selectedMonth.split('-');
-        const monthName = new Date(year, monthNum - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-        csvContent += `Period: ${monthName}\n\n`;
+        const dateObj = new Date(year, monthNum - 1);
+        const monthName = dateObj.toLocaleDateString('en-US', { month: 'long' }).toUpperCase();
+        titleLine = `INVENTORY OF MARKETING (Uniforms)`;
+        subtitleLine = `For the month of ${monthName} ${year}`;
+        beginningLabel = `Beginning Inventory - ${monthName} 1, ${year}`;
+        const endOfMonth = new Date(year, monthNum, 0).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+        salesLabel = `SALES (as of ${endOfMonth})`;
     }
 
-    // Transaction details
-    csvContent += 'Transaction Details\n';
-    csvContent += 'Date,Time,Product,Type,Quantity,Previous Stock,New Stock,Reason,User\n';
-    
-    transactionsToExport.forEach(trans => {
-        const date = new Date(trans.created_at);
-        const dateStr = date.toLocaleDateString();
-        const timeStr = date.toLocaleTimeString();
-        const reason = trans.reason ? `"${trans.reason.replace(/"/g, '""')}"` : '';
-        
-        csvContent += `${dateStr},${timeStr},"${trans.product_name}",${trans.transaction_type},${trans.quantity},${trans.previous_stock},${trans.new_stock},${reason},"${trans.user_name || 'System'}"\n`;
-    });
+    const lines = [];
+    lines.push(titleLine);
+    if (subtitleLine) lines.push(subtitleLine);
+    lines.push('');
 
-    // Summary by product
-    csvContent += '\n\nSummary by Product\n';
-    csvContent += 'Product,Stock In (Qty),Stock Out (Qty),Net Change\n';
-    
-    const productSummary = {};
-    transactionsToExport.forEach(trans => {
-        if (!productSummary[trans.product_name]) {
-            productSummary[trans.product_name] = { in: 0, out: 0 };
-        }
-        if (trans.transaction_type === 'stock_in') {
-            productSummary[trans.product_name].in += trans.quantity;
-        } else {
-            productSummary[trans.product_name].out += trans.quantity;
-        }
-    });
+    // Header rows similar to the provided format
+    lines.push([
+        '',
+        '',
+        beginningLabel,
+        '',
+        '',
+        'Ending Inventory',
+        '',
+        salesLabel,
+        '',
+        '',
+        '',
+        ''
+    ].join(','));
 
-    Object.entries(productSummary).forEach(([product, summary]) => {
-        const netChange = summary.in - summary.out;
-        csvContent += `"${product}",${summary.in},${summary.out},${netChange}\n`;
-    });
+    lines.push([
+        'Item No.',
+        'Particular',
+        'Qty',
+        'Unit Price',
+        'Amount',
+        'Qty',
+        'Amount',
+        'Qty',
+        'Selling Price',
+        'Amount',
+        'COGS',
+        'Net Income'
+    ].join(','));
 
-    // Totals
-    const totalIn = transactionsToExport.filter(t => t.transaction_type === 'stock_in').reduce((sum, t) => sum + t.quantity, 0);
-    const totalOut = transactionsToExport.filter(t => t.transaction_type === 'stock_out').reduce((sum, t) => sum + t.quantity, 0);
-    csvContent += `\nTOTALS,${totalIn},${totalOut},${totalIn - totalOut}\n`;
+    let totalBeginningAmount = 0;
+    let totalEndingAmount = 0;
+    let totalSalesAmount = 0;
+    let totalCOGS = 0;
+    let totalNetIncome = 0;
 
-    // Current inventory status
-    csvContent += '\n\nCurrent Inventory Status\n';
-    csvContent += 'Product,Current Stock,Reorder Level,Category\n';
+    let itemNo = 1;
+
     inventory.forEach(item => {
-        csvContent += `"${item.name}",${item.quantity},${item.reorder_level || 0},"${item.category || ''}"\n`;
+        const unitPrice = parseFloat(item.price) || 0;
+
+        // Transactions for this item in the period
+        const itemTrans = transactionsToExport.filter(t => t.inventory_id === item.id);
+        const totalIn = itemTrans
+            .filter(t => t.transaction_type === 'stock_in')
+            .reduce((sum, t) => sum + (t.quantity || 0), 0);
+        const totalOut = itemTrans
+            .filter(t => t.transaction_type === 'stock_out')
+            .reduce((sum, t) => sum + (t.quantity || 0), 0);
+        const netChange = totalIn - totalOut;
+
+        const endingQty = parseFloat(item.stock) || 0;
+        let beginningQty = endingQty - netChange;
+        if (!Number.isFinite(beginningQty)) beginningQty = 0;
+
+        const beginningAmount = beginningQty * unitPrice;
+        const endingAmount = endingQty * unitPrice;
+
+        const salesQty = totalOut;
+        const sellingPrice = unitPrice; // adjust if you have a separate selling price
+        const salesAmount = salesQty * sellingPrice;
+
+        // For now, we treat COGS as 0 so Net Income equals sales amount.
+        // If you have cost data, you can replace this logic.
+        const cogs = 0;
+        const netIncome = salesAmount - cogs;
+
+        totalBeginningAmount += beginningAmount;
+        totalEndingAmount += endingAmount;
+        totalSalesAmount += salesAmount;
+        totalCOGS += cogs;
+        totalNetIncome += netIncome;
+
+        lines.push([
+            itemNo,
+            `"${(item.name || '').replace(/"/g, '""')}"`,
+            beginningQty || 0,
+            fmt(unitPrice),
+            fmt(beginningAmount),
+            endingQty || 0,
+            fmt(endingAmount),
+            salesQty || 0,
+            fmt(sellingPrice),
+            fmt(salesAmount),
+            fmt(cogs),
+            fmt(netIncome)
+        ].join(','));
+
+        itemNo += 1;
     });
+
+    // Totals row
+    lines.push('');
+    lines.push([
+        '',
+        'TOTAL',
+        '',
+        '',
+        fmt(totalBeginningAmount),
+        '',
+        fmt(totalEndingAmount),
+        '',
+        '',
+        fmt(totalSalesAmount),
+        fmt(totalCOGS),
+        fmt(totalNetIncome)
+    ].join(','));
+
+    const csvContent = lines.join('\n');
 
     // Create blob and download
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
-    const fileName = `stock-history-${selectedMonth || 'all-time'}-${new Date().getTime()}.csv`;
-    
+    const fileName = `inventory-report-${selectedMonth || 'all-time'}-${new Date().getTime()}.csv`;
+
     link.setAttribute('href', url);
     link.setAttribute('download', fileName);
     link.style.visibility = 'hidden';
@@ -440,5 +521,5 @@ export async function exportStockHistoryCSV() {
     link.click();
     document.body.removeChild(link);
 
-    Swal.fire('Success', 'Stock history exported to CSV', 'success');
+    Swal.fire('Success', 'Inventory report exported in marketing format.', 'success');
 }
